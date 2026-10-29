@@ -1537,23 +1537,28 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             .font_info_cache
             .get(&font_face_key)
             .copied()
-            // in some circumstances, we might be getting served a FontFace that we did not create ourselves
-            // so create a new font from it and cache it accordingly. The usual culprit here seems to be Segoe UI Symbol
+            // A fallback face: draw with it, not a lookalike.
             .map_or_else(
                 || {
                     let font = font_face_to_font(font_face, &self.locale)
                         .ok_or_else(|| Error::new(DWRITE_E_NOFONT, "Failed to create font"))?;
-                    let font_id = match context.text_system.font_to_font_id.get(&font) {
-                        Some(&font_id) => font_id,
-                        None => context
-                            .text_system
-                            .select_and_cache_font(context.components, &font)
-                            .ok_or_else(|| Error::new(DWRITE_E_NOFONT, "Failed to create font"))?,
-                    };
-                    context
-                        .text_system
-                        .font_info_cache
-                        .insert(font_face_key, font_id);
+                    let features = unsafe {
+                        DirectWriteState::generate_font_features(
+                            &context.components.factory,
+                            &font.features,
+                        )
+                    }
+                    .map_err(|error| Error::new(DWRITE_E_NOFONT, format!("{error:#}")))?;
+                    let text_system = &mut context.text_system;
+                    let font_id = FontId(text_system.fonts.len());
+                    text_system.fonts.push(FontInfo {
+                        font_family_h: HSTRING::from(font.family.as_ref()),
+                        font_face: font_face.clone(),
+                        features,
+                        fallbacks: None,
+                        font_collection: text_system.system_font_collection.clone(),
+                    });
+                    text_system.font_info_cache.insert(font_face_key, font_id);
                     windows::core::Result::Ok(font_id)
                 },
                 Ok,
