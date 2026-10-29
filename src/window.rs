@@ -1601,7 +1601,7 @@ fn retrieve_window_placement(
 /// Windows 11 22H2, the first build with `DWMWA_SYSTEMBACKDROP_TYPE`.
 const SYSTEM_BACKDROP_BUILD: u32 = 22621;
 
-/// DWM's system backdrop across the client area; `None` removes it.
+/// DWM's system backdrop behind the clear client area; `None` removes it.
 fn set_system_backdrop(hwnd: HWND, backdrop: Option<DWM_SYSTEMBACKDROP_TYPE>) {
     let mut version = unsafe { std::mem::zeroed() };
     let status = unsafe { windows::Wdk::System::SystemServices::RtlGetVersion(&mut version) };
@@ -1614,17 +1614,7 @@ fn set_system_backdrop(hwnd: HWND, backdrop: Option<DWM_SYSTEMBACKDROP_TYPE>) {
         }
         return;
     }
-    // The backdrop shows only where the frame reaches.
-    let margin = if backdrop.is_some() { -1 } else { 0 };
-    let margins = MARGINS {
-        cxLeftWidth: margin,
-        cxRightWidth: margin,
-        cyTopHeight: margin,
-        cyBottomHeight: margin,
-    };
-    unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins) }
-        .context("extending the frame for the system backdrop")
-        .log_err();
+    // No frame extension: DWM would draw its caption buttons there.
     let kind = backdrop.unwrap_or(DWMSBT_NONE);
     unsafe {
         DwmSetWindowAttribute(
