@@ -14,7 +14,7 @@ use windows::Win32::{
         Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock},
         Ole::{CF_DIB, CF_HDROP, CF_UNICODETEXT},
     },
-    UI::Shell::{DragQueryFileW, HDROP},
+    UI::Shell::{DROPFILES, DragQueryFileW, HDROP},
 };
 use windows::core::{Owned, PCWSTR};
 
@@ -78,7 +78,7 @@ pub(crate) fn write_to_clipboard(item: ClipboardItem) {
             match entry {
                 ClipboardEntry::String(string) => write_string(string)?,
                 ClipboardEntry::Image(image) => write_image(image)?,
-                ClipboardEntry::ExternalPaths(_) => {}
+                ClipboardEntry::ExternalPaths(paths) => write_paths(paths)?,
             }
         }
         Ok(())
@@ -217,6 +217,31 @@ fn write_image(item: &Image) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Files as Explorer copies them: a DROPFILES header, then wide names.
+fn write_paths(paths: &ExternalPaths) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    let header = DROPFILES {
+        pFiles: std::mem::size_of::<DROPFILES>() as u32,
+        fWide: true.into(),
+        ..Default::default()
+    };
+    let mut bytes = unsafe {
+        std::slice::from_raw_parts(
+            (&header as *const DROPFILES).cast::<u8>(),
+            std::mem::size_of::<DROPFILES>(),
+        )
+    }
+    .to_vec();
+    for path in paths.paths() {
+        for unit in path.as_os_str().encode_wide().chain(Some(0)) {
+            bytes.extend(unit.to_le_bytes());
+        }
+    }
+    bytes.extend(0u16.to_le_bytes());
+    set_clipboard_bytes(&bytes, CF_HDROP.0 as u32)
 }
 
 fn convert_to_png(bytes: &[u8], format: ImageFormat) -> Option<Vec<u8>> {

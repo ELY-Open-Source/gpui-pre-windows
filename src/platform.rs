@@ -1833,7 +1833,8 @@ mod tests {
     use std::ffi::{OsStr, OsString};
 
     use crate::{read_from_clipboard, write_to_clipboard};
-    use gpui::ClipboardItem;
+    use gpui::{ClipboardEntry, ClipboardItem, ClipboardString, ExternalPaths, Image, ImageFormat};
+    use std::path::PathBuf;
     use windows::Win32::Security::Credentials::{
         CRED_PERSIST_SESSION, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW,
         CredWriteW,
@@ -1935,5 +1936,21 @@ mod tests {
                 vec![12],
             )),
         );
+
+        // Text, an image and files go and come back together.
+        let text = ClipboardEntry::String(ClipboardString::new("two files".to_string()));
+        let image = ClipboardEntry::Image(Image::from_bytes(ImageFormat::Png, vec![1, 2, 3]));
+        let paths = ClipboardEntry::ExternalPaths(ExternalPaths(
+            vec![PathBuf::from(r"C:\tmp\a b.txt"), PathBuf::from(r"C:\tmp\é.txt")].into(),
+        ));
+        let entries = vec![text.clone(), image.clone(), paths.clone()];
+        write_to_clipboard(ClipboardItem { entries });
+        let read = read_from_clipboard().expect("an item").entries;
+        assert_eq!(read.len(), 3, "{read:?}");
+        for entry in [text, image, paths.clone()] {
+            assert!(read.contains(&entry), "{entry:?} in {read:?}");
+        }
+        write_to_clipboard(ClipboardItem { entries: vec![paths.clone()] });
+        assert_eq!(read_from_clipboard().expect("files").entries, [paths]);
     }
 }
