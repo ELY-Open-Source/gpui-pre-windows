@@ -916,7 +916,7 @@ impl PlatformWindow for WindowsWindow {
         self.state.background_appearance.set(background_appearance);
         let hwnd = self.0.hwnd;
 
-        // Mica is DWM's system backdrop; the rest are accents. Each clears the other.
+        // Mica and the accents each clear the other.
         match background_appearance {
             WindowBackgroundAppearance::Opaque => {
                 set_system_backdrop(hwnd, None);
@@ -1601,7 +1601,7 @@ fn retrieve_window_placement(
 /// Windows 11 22H2, the first build with `DWMWA_SYSTEMBACKDROP_TYPE`.
 const SYSTEM_BACKDROP_BUILD: u32 = 22621;
 
-/// Sets DWM's system backdrop behind the whole client area; `None` takes it away.
+/// DWM's system backdrop across the client area; `None` removes it.
 fn set_system_backdrop(hwnd: HWND, backdrop: Option<DWM_SYSTEMBACKDROP_TYPE>) {
     let mut version = unsafe { std::mem::zeroed() };
     let status = unsafe { windows::Wdk::System::SystemServices::RtlGetVersion(&mut version) };
@@ -1614,7 +1614,7 @@ fn set_system_backdrop(hwnd: HWND, backdrop: Option<DWM_SYSTEMBACKDROP_TYPE>) {
         }
         return;
     }
-    // The backdrop shows only where the frame reaches into the client area.
+    // The backdrop shows only where the frame reaches.
     let margin = if backdrop.is_some() { -1 } else { 0 };
     let margins = MARGINS {
         cxLeftWidth: margin,
