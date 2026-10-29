@@ -1941,7 +1941,11 @@ mod tests {
         let text = ClipboardEntry::String(ClipboardString::new("two files".to_string()));
         let image = ClipboardEntry::Image(Image::from_bytes(ImageFormat::Png, vec![1, 2, 3]));
         let paths = ClipboardEntry::ExternalPaths(ExternalPaths(
-            vec![PathBuf::from(r"C:\tmp\a b.txt"), PathBuf::from(r"C:\tmp\é.txt")].into(),
+            vec![
+                PathBuf::from(r"C:\tmp\a b.txt"),
+                PathBuf::from(r"C:\tmp\é.txt"),
+            ]
+            .into(),
         ));
         let entries = vec![text.clone(), image.clone(), paths.clone()];
         write_to_clipboard(ClipboardItem { entries });
@@ -1950,7 +1954,9 @@ mod tests {
         for entry in [text, image, paths.clone()] {
             assert!(read.contains(&entry), "{entry:?} in {read:?}");
         }
-        write_to_clipboard(ClipboardItem { entries: vec![paths.clone()] });
+        write_to_clipboard(ClipboardItem {
+            entries: vec![paths.clone()],
+        });
         assert_eq!(read_from_clipboard().expect("files").entries, [paths]);
     }
 }

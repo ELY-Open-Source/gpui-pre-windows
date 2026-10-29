@@ -916,25 +916,27 @@ impl PlatformWindow for WindowsWindow {
         self.state.background_appearance.set(background_appearance);
         let hwnd = self.0.hwnd;
 
-        // using Dwm APIs for Mica and MicaAlt backdrops.
-        // others follow the set_window_composition_attribute approach
+        // Mica is DWM's system backdrop; the rest are accents. Each clears the other.
         match background_appearance {
             WindowBackgroundAppearance::Opaque => {
+                set_system_backdrop(hwnd, None);
                 set_window_composition_attribute(hwnd, None, 0);
             }
             WindowBackgroundAppearance::Transparent => {
+                set_system_backdrop(hwnd, None);
                 set_window_composition_attribute(hwnd, None, 2);
             }
             WindowBackgroundAppearance::Blurred => {
+                set_system_backdrop(hwnd, None);
                 set_window_composition_attribute(hwnd, Some((0, 0, 0, 0)), 4);
             }
             WindowBackgroundAppearance::MicaBackdrop => {
-                // DWMSBT_MAINWINDOW => MicaBase
-                dwm_set_window_composition_attribute(hwnd, 2);
+                set_window_composition_attribute(hwnd, None, 0);
+                set_system_backdrop(hwnd, Some(DWMSBT_MAINWINDOW));
             }
             WindowBackgroundAppearance::MicaAltBackdrop => {
-                // DWMSBT_TABBEDWINDOW => MicaAlt
-                dwm_set_window_composition_attribute(hwnd, 4);
+                set_window_composition_attribute(hwnd, None, 0);
+                set_system_backdrop(hwnd, Some(DWMSBT_TABBEDWINDOW));
             }
         }
     }
@@ -1596,28 +1598,44 @@ fn retrieve_window_placement(
     Ok(placement)
 }
 
-fn dwm_set_window_composition_attribute(hwnd: HWND, backdrop_type: u32) {
+/// Windows 11 22H2, the first build with `DWMWA_SYSTEMBACKDROP_TYPE`.
+const SYSTEM_BACKDROP_BUILD: u32 = 22621;
+
+/// Sets DWM's system backdrop behind the whole client area; `None` takes it away.
+fn set_system_backdrop(hwnd: HWND, backdrop: Option<DWM_SYSTEMBACKDROP_TYPE>) {
     let mut version = unsafe { std::mem::zeroed() };
     let status = unsafe { windows::Wdk::System::SystemServices::RtlGetVersion(&mut version) };
-
-    // DWMWA_SYSTEMBACKDROP_TYPE is available only on version 22621 or later
-    // using SetWindowCompositionAttributeType as a fallback
-    if !status.is_ok() || version.dwBuildNumber < 22621 {
+    if !status.is_ok() || version.dwBuildNumber < SYSTEM_BACKDROP_BUILD {
+        if let Some(backdrop) = backdrop {
+            log::warn!(
+                "{backdrop:?} needs Windows build {SYSTEM_BACKDROP_BUILD}; this is {}",
+                version.dwBuildNumber
+            );
+        }
         return;
     }
-
+    // The backdrop shows only where the frame reaches into the client area.
+    let margin = if backdrop.is_some() { -1 } else { 0 };
+    let margins = MARGINS {
+        cxLeftWidth: margin,
+        cxRightWidth: margin,
+        cyTopHeight: margin,
+        cyBottomHeight: margin,
+    };
+    unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins) }
+        .context("extending the frame for the system backdrop")
+        .log_err();
+    let kind = backdrop.unwrap_or(DWMSBT_NONE);
     unsafe {
-        let result = DwmSetWindowAttribute(
+        DwmSetWindowAttribute(
             hwnd,
             DWMWA_SYSTEMBACKDROP_TYPE,
-            &backdrop_type as *const _ as *const _,
-            std::mem::size_of_val(&backdrop_type) as u32,
-        );
-
-        if !result.is_ok() {
-            return;
-        }
+            &kind as *const _ as *const _,
+            std::mem::size_of_val(&kind) as u32,
+        )
     }
+    .context("setting the system backdrop")
+    .log_err();
 }
 
 fn set_window_composition_attribute(hwnd: HWND, color: Option<Color>, state: u32) {
