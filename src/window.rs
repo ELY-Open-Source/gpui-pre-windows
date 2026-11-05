@@ -61,7 +61,8 @@ pub struct WindowsWindowState {
     pub last_reported_modifiers: Cell<Option<Modifiers>>,
     pub last_reported_capslock: Cell<Option<Capslock>>,
     pub hovered: Cell<bool>,
-    pub mouse_position: Cell<Point<Pixels>>,
+    /// The last client move, in device pixels.
+    pub last_move: Cell<Option<(i16, i16)>>,
     pub last_visibility: Cell<Option<WindowVisibility>>,
     pub direct_manipulation: DirectManipulationHandler,
 
@@ -177,7 +178,7 @@ impl WindowsWindowState {
             last_reported_modifiers: Cell::new(last_reported_modifiers),
             last_reported_capslock: Cell::new(last_reported_capslock),
             hovered: Cell::new(hovered),
-            mouse_position: Cell::new(Point::default()),
+            last_move: Cell::new(None),
             last_visibility: Cell::new(None),
             renderer: RefCell::new(renderer),
             force_render_pending: Cell::new(false),

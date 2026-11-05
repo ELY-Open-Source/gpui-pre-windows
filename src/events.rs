@@ -385,12 +385,13 @@ impl WindowsWindowInner {
             }
             _ => None,
         };
+        let at = Some((lparam.signed_loword(), lparam.signed_hiword()));
         // Windows repeats a move on a repaint under the pointer.
-        if pressed_button.is_none() && position == self.state.mouse_position.get() {
+        if pressed_button.is_none() && at == self.state.last_move.get() {
             log::trace!("window: a move to {position:?} that moved nothing passes by");
             return Some(1);
         }
-        self.state.mouse_position.set(position);
+        self.state.last_move.set(at);
         self.restore_cursor_after_hide();
 
         let Some(mut func) = self.state.callbacks.input.take() else {
@@ -409,6 +410,7 @@ impl WindowsWindowInner {
 
     fn handle_mouse_leave_msg(&self) -> Option<isize> {
         self.state.hovered.set(false);
+        self.state.last_move.set(None);
         // The next window's `WM_SETCURSOR` picks its own cursor, so we just clear
         // the flag for tight `is_cursor_visible()` semantics.
         self.state.cursor_visible.store(true, Ordering::Relaxed);
@@ -1038,6 +1040,7 @@ impl WindowsWindowInner {
 
     fn handle_nc_mouse_move_msg(&self, handle: HWND, lparam: LPARAM) -> Option<isize> {
         self.start_tracking_mouse(handle, TME_LEAVE | TME_NONCLIENT);
+        self.state.last_move.set(None);
         self.restore_cursor_after_hide();
 
         let mut func = self.state.callbacks.input.take()?;
